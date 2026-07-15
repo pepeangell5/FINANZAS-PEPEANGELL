@@ -1,0 +1,138 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+/* The authenticated financial panel defaults to a focused, readable light theme. */
+.finance-light {
+  color-scheme: light;
+  background: #fff8fc;
+  color: #1f1720;
+}
+
+.finance-light [class*="bg-neutral-950"],
+.finance-light [class*="bg-[#070807]"],
+.finance-light [class*="bg-black/"] {
+  background-color: #ffffff !important;
+}
+
+.finance-light [class*="bg-neutral-800"] {
+  background-color: #f8edf4 !important;
+}
+
+.finance-light [class*="bg-white/"] {
+  background-color: #ffffff !important;
+}
+
+.finance-light [class*="border-white/"] {
+  border-color: #ead4e2 !important;
+}
+
+.finance-light [class~="text-white"],
+.finance-light [class*="text-neutral-50"],
+.finance-light [class*="text-neutral-100"],
+.finance-light [class*="text-neutral-200"],
+.finance-light [class*="text-neutral-300"] {
+  color: #1f1720 !important;
+}
+
+.finance-light [class*="text-neutral-400"] {
+  color: #625460 !important;
+}
+
+.finance-light [class*="text-neutral-500"],
+.finance-light [class*="text-neutral-600"] {
+  color: #796977 !important;
+}
+
+.finance-light [class*="text-pink-50"],
+.finance-light [class*="text-pink-100"],
+.finance-light [class*="text-pink-200"],
+.finance-light [class*="text-pink-300"],
+.finance-light [class*="text-pink-400"] {
+  color: #c00078 !important;
+}
+
+.finance-light [class*="bg-pink-300"],
+.finance-light [class*="bg-pink-400"] {
+  background-color: #ff4db8 !important;
+}
+
+.finance-light [class*="text-emerald-50"],
+.finance-light [class*="text-emerald-100"],
+.finance-light [class*="text-emerald-200"],
+.finance-light [class*="text-emerald-300"] {
+  color: #047857 !important;
+}
+
+.finance-light [class*="text-red-50"],
+.finance-light [class*="text-red-100"],
+.finance-light [class*="text-red-200"],
+.finance-light [class*="text-red-300"] {
+  color: #b42318 !important;
+}
+
+.finance-light [class*="text-yellow-50"],
+.finance-light [class*="text-yellow-100"],
+.finance-light [class*="text-yellow-200"],
+.finance-light [class*="text-yellow-300"] {
+  color: #9a6700 !important;
+}
+
+.finance-light input,
+.finance-light select,
+.finance-light textarea {
+  color: #1f1720 !important;
+}
+
+.finance-light input::placeholder,
+.finance-light textarea::placeholder {
+  color: #968593 !important;
+}
+
+.entry-card-income {
+  border-color: #6ee7b7;
+  background: #ecfdf5;
+}
+
+.entry-card-expense {
+  border-color: #fda4af;
+  background: #fff1f2;
+}
+
+.finance-dark .entry-card-income {
+  border-color: rgb(52 211 153 / 0.45);
+  background: rgb(6 78 59 / 0.28);
+}
+
+.finance-dark .entry-card-expense {
+  border-color: rgb(251 113 133 / 0.45);
+  background: rgb(136 19 55 / 0.22);
+}
