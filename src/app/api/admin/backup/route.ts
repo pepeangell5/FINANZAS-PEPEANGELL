@@ -1,5 +1,5 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatDateInput } from "@/lib/format";
+import type { SupabaseAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/supabase/admin-auth";
 
 export const dynamic = "force-dynamic";
@@ -125,7 +125,7 @@ function sqlValue(value: BackupRow[string]) {
 
 function buildUpsert(table: BackupTable, rows: BackupRow[]) {
   if (rows.length === 0) {
-    return `-- public.${table.name}: sin registros\n`;
+    return `-- finance.${table.name}: sin registros\n`;
   }
 
   const columns = table.columns.map(sqlIdentifier).join(", ");
@@ -142,7 +142,7 @@ function buildUpsert(table: BackupTable, rows: BackupRow[]) {
     .join(",\n");
 
   return [
-    `insert into public.${sqlIdentifier(table.name)} (${columns})`,
+    `insert into finance.${sqlIdentifier(table.name)} (${columns})`,
     `values`,
     values,
     `on conflict ("id") do update set ${updates};`,
@@ -164,7 +164,7 @@ function getBackupFileName() {
 }
 
 async function fetchTableRows(
-  supabaseAdmin: SupabaseClient,
+  supabaseAdmin: SupabaseAdminClient,
   table: BackupTable,
 ) {
   const { data, error } = await supabaseAdmin
@@ -194,7 +194,7 @@ export async function GET(request: Request) {
   const sections = [
     "-- ESP32-TOOLS FINANZAS - respaldo SQL",
     `-- Generado: ${createdAt}`,
-    "-- Este archivo respalda tablas públicas. Las cuentas de Auth se administran en Supabase Authentication.",
+    "-- Este archivo respalda el esquema finance. Las cuentas de Auth se administran en Supabase Authentication.",
     "-- Restaurar en el orden incluido para respetar relaciones entre tablas.",
     "",
     "begin;",
@@ -205,7 +205,7 @@ export async function GET(request: Request) {
     for (const table of backupTables) {
       const rows = await fetchTableRows(supabaseAdmin, table);
 
-      sections.push(`-- Tabla public.${table.name}`);
+      sections.push(`-- Tabla finance.${table.name}`);
       sections.push(buildUpsert(table, rows));
     }
   } catch (error) {

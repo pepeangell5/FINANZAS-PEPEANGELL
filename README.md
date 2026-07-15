@@ -5,12 +5,15 @@ Panel personal de finanzas de PepeAngell. Es una aplicación Next.js independien
 ## Privacidad
 
 - No existe registro público.
-- El acceso usa Supabase Auth con correo/usuario y contraseña.
+- El acceso usa Supabase Auth con correo y contraseña.
 - Todas las tablas financieras tienen RLS y aíslan los datos mediante `auth.uid()`.
+- Los datos viven en el esquema `finance` del proyecto `pepeangell-shop`, separados de las tablas de tienda en `public`.
 - Las páginas envían `noindex`, `nofollow` y `noarchive`.
 - La clave administrativa de Supabase solo se configura como variable privada del servidor.
 
 La ruta puede ser descubierta; la protección real depende de Supabase Auth, las políticas RLS y una contraseña segura.
+
+Supabase Auth es compartido: cambiar la contraseña de este usuario desde Finanzas también cambia la del admin de tienda asociado al mismo correo.
 
 ## Desarrollo local
 

@@ -14,5 +14,10 @@ export function createSupabaseAdminClient() {
       autoRefreshToken: false,
       persistSession: false,
     },
+    db: { schema: "finance" },
   });
 }
+
+export type SupabaseAdminClient = ReturnType<
+  typeof createSupabaseAdminClient
+>;

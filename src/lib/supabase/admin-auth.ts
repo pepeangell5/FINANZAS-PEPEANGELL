@@ -1,11 +1,14 @@
-import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import type { User } from "@supabase/supabase-js";
+import {
+  createSupabaseAdminClient,
+  type SupabaseAdminClient,
+} from "@/lib/supabase/admin";
 
 export type AppRole = "admin" | "user";
 
 export type AdminContext = {
   currentUser: User;
-  supabaseAdmin: SupabaseClient;
+  supabaseAdmin: SupabaseAdminClient;
 };
 
 export function jsonError(message: string, status = 400) {
@@ -28,7 +31,7 @@ export async function requireAdmin(request: Request): Promise<
   | { context: AdminContext; response?: never }
   | { context?: never; response: Response }
 > {
-  let supabaseAdmin: SupabaseClient;
+  let supabaseAdmin: SupabaseAdminClient;
 
   try {
     supabaseAdmin = createSupabaseAdminClient();
