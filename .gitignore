@@ -26,6 +26,7 @@
 ~$*.docx
 .codex-dev.log
 .codex-dev-error.log
+/.tmp/
 
 # debug
 npm-debug.log*
