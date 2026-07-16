@@ -52,10 +52,16 @@ const backupTables: BackupTable[] = [
     orderBy: "created_at",
   },
   {
+    columns: ["id", "user_id", "name", "created_at", "updated_at"],
+    name: "payment_methods",
+    orderBy: "created_at",
+  },
+  {
     columns: [
       "id",
       "user_id",
       "income_category_id",
+      "payment_method_id",
       "income_date",
       "concept",
       "amount",
@@ -71,6 +77,7 @@ const backupTables: BackupTable[] = [
       "id",
       "user_id",
       "category_id",
+      "payment_method_id",
       "expense_date",
       "concept",
       "amount",

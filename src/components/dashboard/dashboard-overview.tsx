@@ -443,6 +443,7 @@ export function DashboardOverview() {
       helper: balance >= 0 ? "Disponible estimado" : "Gasto mayor al ingreso",
       icon: Wallet,
       featured: true,
+      warning: balance < 0,
     },
     {
       label: "Pendientes",
@@ -474,11 +475,11 @@ export function DashboardOverview() {
                   ? "border-emerald-300 bg-emerald-50"
                   : stat.tone === "expense"
                     ? "border-red-300 bg-red-50"
-                    : stat.featured
-                  ? "border-emerald-300/25 bg-emerald-300/[0.08]"
-                  : stat.warning
-                    ? "border-red-400/25 bg-red-500/10"
-                  : "border-white/10 bg-white/[0.035]"
+                    : stat.warning
+                      ? "border-red-400/25 bg-red-500/10"
+                      : stat.featured
+                        ? "border-emerald-300/25 bg-emerald-300/[0.08]"
+                        : "border-white/10 bg-white/[0.035]"
               }`}
             >
               <div className="flex items-start justify-between gap-4">
@@ -489,11 +490,11 @@ export function DashboardOverview() {
                         ? "text-emerald-800"
                         : stat.tone === "expense"
                           ? "text-red-800"
-                        : stat.featured
-                        ? "text-emerald-100"
                         : stat.warning
                           ? "text-red-100"
-                          : "text-neutral-400"
+                          : stat.featured
+                            ? "text-emerald-100"
+                            : "text-neutral-400"
                     }`}
                   >
                     {stat.label}
@@ -504,11 +505,11 @@ export function DashboardOverview() {
                         ? "text-emerald-900"
                         : stat.tone === "expense"
                           ? "text-red-900"
-                        : stat.featured
-                        ? "text-emerald-200"
                         : stat.warning
                           ? "text-red-100"
-                          : "text-white"
+                          : stat.featured
+                            ? "text-emerald-200"
+                            : "text-white"
                     }`}
                   >
                     {stat.value}
@@ -523,11 +524,11 @@ export function DashboardOverview() {
                         ? "border-emerald-300 bg-white text-emerald-800"
                         : stat.tone === "expense"
                           ? "border-red-300 bg-white text-red-800"
-                        : stat.featured
-                        ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-200"
                         : stat.warning
                           ? "border-red-400/25 bg-red-500/10 text-red-100"
-                        : "border-white/10 bg-black/20 text-neutral-300"
+                          : stat.featured
+                            ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-200"
+                            : "border-white/10 bg-black/20 text-neutral-300"
                     }`}
                   >
                     <Icon className="h-5 w-5" />
@@ -539,11 +540,11 @@ export function DashboardOverview() {
                         ? "border-emerald-300 bg-white text-emerald-800"
                         : stat.tone === "expense"
                           ? "border-red-300 bg-white text-red-800"
-                        : stat.featured
-                        ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-200"
                         : stat.warning
                           ? "border-red-400/25 bg-red-500/10 text-red-100"
-                        : "border-white/10 bg-black/20 text-neutral-300"
+                          : stat.featured
+                            ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-200"
+                            : "border-white/10 bg-black/20 text-neutral-300"
                     }`}
                   >
                     <Icon className="h-5 w-5" />

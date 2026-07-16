@@ -39,6 +39,11 @@ type Category = {
   color: string;
 };
 
+type PaymentMethod = {
+  id: string;
+  name: string;
+};
+
 type FixedExpense = {
   id: string;
   category_id: string | null;
@@ -96,6 +101,30 @@ const viewOptions: Array<{ label: string; value: ViewMode }> = [
   { label: "Atrasados", value: "overdue" },
   { label: "Pagados", value: "paid" },
 ];
+
+function getViewOptionClass(value: ViewMode, isActive: boolean) {
+  if (value === "pending") {
+    return isActive
+      ? "border-yellow-300 bg-yellow-300 text-yellow-950"
+      : "border-yellow-300/30 bg-yellow-300/10 text-yellow-100 hover:border-yellow-300/60";
+  }
+
+  if (value === "overdue") {
+    return isActive
+      ? "border-red-300 bg-red-300 text-red-950"
+      : "border-red-300/30 bg-red-300/10 text-red-100 hover:border-red-300/60";
+  }
+
+  if (value === "paid") {
+    return isActive
+      ? "border-emerald-300 bg-emerald-300 text-emerald-950"
+      : "border-emerald-300/30 bg-emerald-300/10 text-emerald-100 hover:border-emerald-300/60";
+  }
+
+  return isActive
+    ? "border-pink-300 bg-pink-300 text-neutral-950"
+    : "border-white/10 bg-black/20 text-neutral-300 hover:border-white/20 hover:bg-white/[0.04]";
+}
 
 function getDayDifference(dueDate: string, today: string) {
   const due = new Date(`${dueDate}T00:00:00`).getTime();
@@ -192,13 +221,16 @@ function isMissingRecurringColumnsError(message: string) {
 export function FixedExpenseManager() {
   const dueDateInputRef = useRef<HTMLInputElement>(null);
   const paidDateInputRef = useRef<HTMLInputElement>(null);
+  const formSectionRef = useRef<HTMLElement>(null);
   const [payments, setPayments] = useState<FixedExpense[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [concept, setConcept] = useState("");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [dueDate, setDueDate] = useState(getTodayDateInput());
   const [paidDate, setPaidDate] = useState(getTodayDateInput());
+  const [paidPaymentMethodId, setPaidPaymentMethodId] = useState("");
   const [isRecurring, setIsRecurring] = useState(false);
   const [note, setNote] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("pending");
@@ -214,6 +246,16 @@ export function FixedExpenseManager() {
 
   const categoryById = useMemo(() => {
     return new Map(categories.map((category) => [category.id, category]));
+  }, [categories]);
+
+  const defaultFixedCategoryId = useMemo(() => {
+    return (
+      categories.find(
+        (category) =>
+          normalizeSpanishLabel(category.name).trim().toLowerCase() ===
+          "gastos fijos personales",
+      )?.id ?? categories[0]?.id ?? ""
+    );
   }, [categories]);
 
   const summary = useMemo(() => {
@@ -283,12 +325,13 @@ export function FixedExpenseManager() {
   }, [payments, today, viewMode]);
 
   const fetchData = useCallback(async () => {
-    const [paymentsResult, categoriesResult] = await Promise.all([
+    const [paymentsResult, categoriesResult, paymentMethodsResult] = await Promise.all([
       supabase
         .from("fixed_expenses")
         .select(recurringPaymentSelect)
         .order("due_date", { ascending: true }),
       supabase.from("categories").select("id, name, color").order("name"),
+      supabase.from("payment_methods").select("id, name").order("name"),
     ]);
 
     if (
@@ -302,6 +345,7 @@ export function FixedExpenseManager() {
 
       return {
         categoriesData: (categoriesResult.data ?? []) as Category[],
+        paymentMethodsData: (paymentMethodsResult.data ?? []) as PaymentMethod[],
         hasRecurringColumns: false,
         paymentsData: (fallbackPaymentsResult.data ?? []) as FixedExpenseRow[],
         paymentsError: fallbackPaymentsResult.error?.message ?? null,
@@ -310,6 +354,7 @@ export function FixedExpenseManager() {
 
     return {
       categoriesData: (categoriesResult.data ?? []) as Category[],
+      paymentMethodsData: (paymentMethodsResult.data ?? []) as PaymentMethod[],
       hasRecurringColumns: true,
       paymentsData: (paymentsResult.data ?? []) as FixedExpenseRow[],
       paymentsError: paymentsResult.error?.message ?? null,
@@ -317,7 +362,11 @@ export function FixedExpenseManager() {
   }, []);
 
   const applyData = useCallback(
-    (paymentsData: FixedExpenseRow[] | null, categoriesData: Category[]) => {
+    (
+      paymentsData: FixedExpenseRow[] | null,
+      categoriesData: Category[],
+      paymentMethodsData: PaymentMethod[],
+    ) => {
       setPayments(
         (paymentsData ?? []).map((payment) => ({
           ...payment,
@@ -327,6 +376,17 @@ export function FixedExpenseManager() {
         })),
       );
       setCategories(categoriesData);
+      setPaymentMethods(paymentMethodsData);
+      const defaultCategoryId =
+        categoriesData.find(
+          (category) =>
+            normalizeSpanishLabel(category.name).trim().toLowerCase() ===
+            "gastos fijos personales",
+        )?.id ?? categoriesData[0]?.id ?? "";
+      setCategoryId((current) => current || defaultCategoryId);
+      setPaidPaymentMethodId(
+        (current) => current || paymentMethodsData[0]?.id || "",
+      );
     },
     [],
   );
@@ -340,12 +400,17 @@ export function FixedExpenseManager() {
 
     if (result.paymentsError) {
       setCategories(result.categoriesData);
+      setPaymentMethods(result.paymentMethodsData);
       setMessage("No se pudieron cargar los pagos pendientes.");
       setIsLoading(false);
       return;
     }
 
-    applyData(result.paymentsData, result.categoriesData);
+    applyData(
+      result.paymentsData,
+      result.categoriesData,
+      result.paymentMethodsData,
+    );
     if (!result.hasRecurringColumns) {
       setMessage("Los pagos se cargaron. Falta correr el SQL mensual en Supabase.");
     }
@@ -364,12 +429,17 @@ export function FixedExpenseManager() {
 
       if (result.paymentsError) {
         setCategories(result.categoriesData);
+        setPaymentMethods(result.paymentMethodsData);
         setMessage("No se pudieron cargar los pagos pendientes.");
         setIsLoading(false);
         return;
       }
 
-      applyData(result.paymentsData, result.categoriesData);
+      applyData(
+        result.paymentsData,
+        result.categoriesData,
+        result.paymentMethodsData,
+      );
       if (!result.hasRecurringColumns) {
         setMessage(
           "Los pagos se cargaron. Falta correr el SQL mensual en Supabase.",
@@ -410,6 +480,12 @@ export function FixedExpenseManager() {
       return;
     }
 
+    if (!categoryId) {
+      setMessage("Selecciona una categoría para este pago.");
+      setIsSaving(false);
+      return;
+    }
+
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user.id;
 
@@ -421,7 +497,7 @@ export function FixedExpenseManager() {
 
     const paymentPayload = {
       amount: parsedAmount,
-      category_id: categoryId || null,
+      category_id: categoryId,
       concept: cleanConcept,
       due_date: dueDate,
       note: cleanNote || null,
@@ -460,7 +536,7 @@ export function FixedExpenseManager() {
         .from("expenses")
         .update({
           amount: parsedAmount,
-          category_id: categoryId || null,
+          category_id: categoryId,
           concept: cleanConcept,
           note: buildGeneratedExpenseNote(cleanNote),
         })
@@ -497,13 +573,19 @@ export function FixedExpenseManager() {
     setIsRecurring(hasRecurringColumns ? payment.is_recurring : false);
     setNote(payment.note ?? "");
     setMessage("Editando pago pendiente seleccionado.");
+    window.setTimeout(() => {
+      formSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
   }
 
   function cancelEdit() {
     setEditingPaymentId(null);
     setConcept("");
     setAmount("");
-    setCategoryId("");
+    setCategoryId(defaultFixedCategoryId);
     setDueDate(getTodayDateInput());
     setIsRecurring(false);
     setNote("");
@@ -527,6 +609,7 @@ export function FixedExpenseManager() {
   function requestPaidChange(payment: FixedExpense) {
     setConfirmationError("");
     setPaidDate(getTodayDateInput());
+    setPaidPaymentMethodId(paymentMethods[0]?.id ?? "");
     setConfirmation({
       action: payment.status === "paid" ? "reopen" : "mark-paid",
       payment,
@@ -537,6 +620,7 @@ export function FixedExpenseManager() {
     setConfirmation(null);
     setConfirmationError("");
     setPaidDate(getTodayDateInput());
+    setPaidPaymentMethodId(paymentMethods[0]?.id ?? "");
   }
 
   async function deletePayment(payment: FixedExpense) {
@@ -594,8 +678,13 @@ export function FixedExpenseManager() {
         return;
       }
 
+      if (!paidPaymentMethodId) {
+        setConfirmationError("Selecciona el método utilizado para pagar.");
+        return;
+      }
+
       closeConfirmation();
-      await togglePaid(payment, paidDate);
+      await togglePaid(payment, paidDate, paidPaymentMethodId);
       return;
     }
 
@@ -603,7 +692,11 @@ export function FixedExpenseManager() {
     await togglePaid(payment);
   }
 
-  async function togglePaid(payment: FixedExpense, selectedPaidDate = today) {
+  async function togglePaid(
+    payment: FixedExpense,
+    selectedPaidDate = today,
+    selectedPaymentMethodId: string | null = null,
+  ) {
     const nextStatus = payment.status === "paid" ? "pending" : "paid";
 
     if (nextStatus === "paid") {
@@ -623,6 +716,7 @@ export function FixedExpenseManager() {
           concept: payment.concept,
           expense_date: selectedPaidDate,
           note: buildGeneratedExpenseNote(payment.note),
+          payment_method_id: selectedPaymentMethodId,
           user_id: userId,
         })
         .select("id")
@@ -847,7 +941,10 @@ export function FixedExpenseManager() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-xl shadow-black/20">
+      <section
+        ref={formSectionRef}
+        className="scroll-mt-6 rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-xl shadow-black/20"
+      >
         <div className={isFormOpen || message ? "mb-6" : ""}>
           <BrandedSectionHeading
             title={editingPaymentId ? "Editar pago" : "Nuevo pago pendiente"}
@@ -964,14 +1061,15 @@ export function FixedExpenseManager() {
 
             <label className="block">
               <span className="text-sm font-medium text-neutral-300">
-                Categoría opcional
+                Categoría
               </span>
               <select
                 value={categoryId}
                 onChange={(event) => setCategoryId(event.target.value)}
+                required
                 className={`${inputClass} mt-2`}
               >
-                <option value="">Sin categoría</option>
+                <option value="">Selecciona una categoría</option>
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {normalizeSpanishLabel(category.name)}
@@ -1028,13 +1126,13 @@ export function FixedExpenseManager() {
             onClick={() => setViewMode("pending")}
             className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${
               viewMode === "pending"
-                ? "border-emerald-300/30 bg-emerald-300/10"
-                : "border-white/10 bg-white/[0.035]"
+                ? "border-yellow-300/40 bg-yellow-300/15"
+                : "border-yellow-300/20 bg-yellow-300/[0.06]"
             }`}
           >
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-neutral-400">Pendiente total</p>
-              <ReceiptText className="h-5 w-5 text-emerald-200" />
+              <p className="text-sm text-yellow-100">Pendiente total</p>
+              <ReceiptText className="h-5 w-5 text-yellow-100" />
             </div>
             <p className="mt-3 text-2xl font-bold text-white">
               {formatCurrency(summary.pendingTotal)}
@@ -1042,7 +1140,7 @@ export function FixedExpenseManager() {
             <p className="mt-1 text-sm text-neutral-500">
               {summary.pending} pagos abiertos
             </p>
-            <p className="mt-3 text-xs font-semibold text-emerald-100">
+            <p className="mt-3 text-xs font-semibold text-yellow-100">
               Ver pendientes
             </p>
           </button>
@@ -1135,11 +1233,10 @@ export function FixedExpenseManager() {
                   key={option.value}
                   type="button"
                   onClick={() => setViewMode(option.value)}
-                  className={`h-10 rounded-lg border px-3 text-sm font-medium transition ${
-                    viewMode === option.value
-                      ? "border-emerald-300/30 bg-emerald-300 text-neutral-950"
-                      : "border-white/10 bg-black/20 text-neutral-300 hover:border-white/20 hover:bg-white/[0.04]"
-                  }`}
+                  className={`h-10 rounded-lg border px-3 text-sm font-medium transition ${getViewOptionClass(
+                    option.value,
+                    viewMode === option.value,
+                  )}`}
                 >
                   {option.label}
                 </button>
@@ -1224,7 +1321,7 @@ export function FixedExpenseManager() {
             </div>
 
             {confirmation.action === "mark-paid" ? (
-              <label className="mt-5 block">
+              <div className="mt-5 block">
                 <span className="text-sm font-medium text-neutral-300">
                   Fecha real de pago
                 </span>
@@ -1249,6 +1346,26 @@ export function FixedExpenseManager() {
                     <CalendarDays className="h-4 w-4" />
                   </button>
                 </div>
+                <label className="mt-4 block">
+                  <span className="text-sm font-medium text-neutral-300">
+                    Método de pago
+                  </span>
+                  <select
+                    value={paidPaymentMethodId}
+                    onChange={(event) => {
+                      setPaidPaymentMethodId(event.target.value);
+                      setConfirmationError("");
+                    }}
+                    className={`${inputClass} mt-2`}
+                  >
+                    <option value="">Selecciona un método</option>
+                    {paymentMethods.map((method) => (
+                      <option key={method.id} value={method.id}>
+                        {method.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 {confirmationError ? (
                   <span className="mt-2 block text-sm text-red-200">
                     {confirmationError}
@@ -1258,7 +1375,7 @@ export function FixedExpenseManager() {
                     Usa la fecha en que realmente se pagó.
                   </span>
                 )}
-              </label>
+              </div>
             ) : null}
 
             <div className="mt-5 flex flex-col gap-3 sm:flex-row">

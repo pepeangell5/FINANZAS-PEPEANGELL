@@ -42,6 +42,12 @@ type Expense = {
   concept: string;
   amount: number;
   note: string | null;
+  payment_method_id: string | null;
+};
+
+type PaymentMethod = {
+  id: string;
+  name: string;
 };
 
 type ViewMode = "recent" | "date" | "high" | "low" | "category" | "chart";
@@ -112,13 +118,17 @@ export function ExpenseManager() {
   const formSectionRef = useRef<HTMLElement>(null);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [date, setDate] = useState(getTodayDateInput());
   const [concept, setConcept] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [paymentMethodId, setPaymentMethodId] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthInput());
   const [viewMode, setViewMode] = useState<ViewMode>("recent");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState("");
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -136,22 +146,39 @@ export function ExpenseManager() {
     [expenses],
   );
 
+  const filteredExpenses = useMemo(() => {
+    return expenses.filter((expense) => {
+      const categoryMatches =
+        !categoryFilter ||
+        (categoryFilter === "sin-categoria"
+          ? !expense.category_id
+          : expense.category_id === categoryFilter);
+      const paymentMethodMatches =
+        !paymentMethodFilter ||
+        (paymentMethodFilter === "sin-metodo"
+          ? !expense.payment_method_id
+          : expense.payment_method_id === paymentMethodFilter);
+
+      return categoryMatches && paymentMethodMatches;
+    });
+  }, [categoryFilter, expenses, paymentMethodFilter]);
+
   const displayedExpenses = useMemo(() => {
     if (viewMode === "high") {
-      return [...expenses].sort((a, b) => b.amount - a.amount);
+      return [...filteredExpenses].sort((a, b) => b.amount - a.amount);
     }
 
     if (viewMode === "low") {
-      return [...expenses].sort((a, b) => a.amount - b.amount);
+      return [...filteredExpenses].sort((a, b) => a.amount - b.amount);
     }
 
-    return sortByDateDesc(expenses);
-  }, [expenses, viewMode]);
+    return sortByDateDesc(filteredExpenses);
+  }, [filteredExpenses, viewMode]);
 
   const groupedByDate = useMemo(() => {
     const groups = new Map<string, Expense[]>();
 
-    for (const expense of sortByDateDesc(expenses)) {
+    for (const expense of sortByDateDesc(filteredExpenses)) {
       const group = groups.get(expense.expense_date) ?? [];
       group.push(expense);
       groups.set(expense.expense_date, group);
@@ -162,7 +189,7 @@ export function ExpenseManager() {
       items,
       total: items.reduce((sum, expense) => sum + expense.amount, 0),
     }));
-  }, [expenses]);
+  }, [filteredExpenses]);
 
   const groupedByCategory = useMemo(() => {
     const groups = new Map<
@@ -170,7 +197,7 @@ export function ExpenseManager() {
       { category: Category | null; items: Expense[]; total: number }
     >();
 
-    for (const expense of expenses) {
+    for (const expense of filteredExpenses) {
       const category = expense.category_id
         ? (categoryById.get(expense.category_id) ?? null)
         : null;
@@ -183,7 +210,7 @@ export function ExpenseManager() {
     }
 
     return Array.from(groups.values()).sort((a, b) => b.total - a.total);
-  }, [categoryById, expenses]);
+  }, [categoryById, filteredExpenses]);
 
   const chartData = useMemo(() => {
     const max = Math.max(...groupedByCategory.map((group) => group.total), 0);
@@ -235,7 +262,7 @@ export function ExpenseManager() {
     const { start, end } = getMonthRange(month);
     const { data, error } = await supabase
       .from("expenses")
-      .select("id, expense_date, category_id, concept, amount, note")
+      .select("id, expense_date, category_id, payment_method_id, concept, amount, note")
       .gte("expense_date", start)
       .lte("expense_date", end)
       .order("expense_date", { ascending: false })
@@ -310,6 +337,28 @@ export function ExpenseManager() {
     };
   }, [applyExpenseRows, ensureCategories, fetchExpenses, selectedMonth]);
 
+  useEffect(() => {
+    let shouldIgnore = false;
+
+    supabase
+      .from("payment_methods")
+      .select("id, name")
+      .order("name", { ascending: true })
+      .then(({ data, error }) => {
+        if (shouldIgnore || error) {
+          return;
+        }
+
+        const methods = (data ?? []) as PaymentMethod[];
+        setPaymentMethods(methods);
+        setPaymentMethodId((current) => current || methods[0]?.id || "");
+      });
+
+    return () => {
+      shouldIgnore = true;
+    };
+  }, []);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSaving(true);
@@ -327,6 +376,12 @@ export function ExpenseManager() {
 
     if (!categoryId) {
       setMessage("Selecciona una categoría.");
+      setIsSaving(false);
+      return;
+    }
+
+    if (!paymentMethodId) {
+      setMessage("Selecciona cómo pagaste este gasto.");
       setIsSaving(false);
       return;
     }
@@ -358,6 +413,7 @@ export function ExpenseManager() {
       concept: cleanConcept,
       expense_date: date,
       note: cleanNote || null,
+      payment_method_id: paymentMethodId,
     };
 
     const { error } = editingExpenseId
@@ -379,6 +435,7 @@ export function ExpenseManager() {
     setConcept("");
     setAmount("");
     setNote("");
+    setPaymentMethodId(paymentMethods[0]?.id ?? "");
     setEditingExpenseId(null);
     setIsFormOpen(false);
     setSelectedMonth(date.slice(0, 7));
@@ -411,6 +468,7 @@ export function ExpenseManager() {
     setEditingExpenseId(expense.id);
     setDate(expense.expense_date);
     setCategoryId(expense.category_id ?? "");
+    setPaymentMethodId(expense.payment_method_id ?? paymentMethods[0]?.id ?? "");
     setConcept(expense.concept);
     setAmount(String(expense.amount));
     setNote(expense.note ?? "");
@@ -427,6 +485,7 @@ export function ExpenseManager() {
     setEditingExpenseId(null);
     setDate(getTodayDateInput());
     setCategoryId((current) => current || categories[0]?.id || "");
+    setPaymentMethodId(paymentMethods[0]?.id ?? "");
     setConcept("");
     setAmount("");
     setNote("");
@@ -453,6 +512,9 @@ export function ExpenseManager() {
 
   function renderExpenseRow(expense: Expense) {
     const category = getCategory(expense);
+    const paymentMethod = expense.payment_method_id
+      ? paymentMethods.find((item) => item.id === expense.payment_method_id)
+      : null;
 
     return (
       <div
@@ -464,6 +526,9 @@ export function ExpenseManager() {
         </span>
         <div>
           <p className="font-medium text-white">{expense.concept}</p>
+          <p className="mt-1 text-xs text-neutral-500">
+            Método: {paymentMethod?.name ?? "Sin método"}
+          </p>
           {expense.note ? (
             <p className="mt-1 text-xs text-neutral-500">{expense.note}</p>
           ) : null}
@@ -574,6 +639,25 @@ export function ExpenseManager() {
                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {normalizeSpanishLabel(category.name)}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-medium text-neutral-300">
+                Método de pago
+              </span>
+              <select
+                value={paymentMethodId}
+                onChange={(event) => setPaymentMethodId(event.target.value)}
+                required
+                className={`${inputClass} mt-2`}
+              >
+                <option value="">Selecciona un método</option>
+                {paymentMethods.map((method) => (
+                  <option key={method.id} value={method.id}>
+                    {method.name}
                   </option>
                 ))}
               </select>
@@ -703,6 +787,45 @@ export function ExpenseManager() {
               ))}
             </div>
           </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                Filtrar categoría
+              </span>
+              <select
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter(event.target.value)}
+                className={`${inputClass} mt-2`}
+              >
+                <option value="">Todas las categorías</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {normalizeSpanishLabel(category.name)}
+                  </option>
+                ))}
+                <option value="sin-categoria">Sin categoría</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                Filtrar método
+              </span>
+              <select
+                value={paymentMethodFilter}
+                onChange={(event) => setPaymentMethodFilter(event.target.value)}
+                className={`${inputClass} mt-2`}
+              >
+                <option value="">Todos los métodos</option>
+                {paymentMethods.map((method) => (
+                  <option key={method.id} value={method.id}>
+                    {method.name}
+                  </option>
+                ))}
+                <option value="sin-metodo">Sin método</option>
+              </select>
+            </label>
+          </div>
         </div>
 
         {isLoading ? (
@@ -729,6 +852,10 @@ export function ExpenseManager() {
               Registrar gasto
             </button>
           </div>
+        ) : filteredExpenses.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-6 text-sm text-neutral-300">
+            No hay gastos que coincidan con los filtros seleccionados.
+          </p>
         ) : viewMode === "chart" ? (
           <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
             <div className="mb-6 flex items-center justify-between gap-4">

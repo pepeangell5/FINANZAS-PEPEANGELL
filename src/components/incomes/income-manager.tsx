@@ -30,6 +30,7 @@ import { parseMoneyInput } from "@/lib/money";
 
 type Income = {
   income_category_id: string | null;
+  payment_method_id: string | null;
   id: string;
   income_date: string;
   concept: string;
@@ -39,6 +40,11 @@ type Income = {
 
 type IncomeCategory = {
   color: string;
+  id: string;
+  name: string;
+};
+
+type PaymentMethod = {
   id: string;
   name: string;
 };
@@ -102,13 +108,17 @@ export function IncomeManager() {
   const formSectionRef = useRef<HTMLElement>(null);
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [incomeCategories, setIncomeCategories] = useState<IncomeCategory[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [incomeCategoryId, setIncomeCategoryId] = useState("");
+  const [paymentMethodId, setPaymentMethodId] = useState("");
   const [date, setDate] = useState(getTodayDateInput());
   const [concept, setConcept] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthInput());
   const [viewMode, setViewMode] = useState<ViewMode>("recent");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [paymentMethodFilter, setPaymentMethodFilter] = useState("");
   const [editingIncomeId, setEditingIncomeId] = useState<string | null>(null);
   const [incomeToDelete, setIncomeToDelete] = useState<Income | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -122,22 +132,39 @@ export function IncomeManager() {
     [incomes],
   );
 
+  const filteredIncomes = useMemo(() => {
+    return incomes.filter((income) => {
+      const categoryMatches =
+        !categoryFilter ||
+        (categoryFilter === "sin-categoria"
+          ? !income.income_category_id
+          : income.income_category_id === categoryFilter);
+      const paymentMethodMatches =
+        !paymentMethodFilter ||
+        (paymentMethodFilter === "sin-metodo"
+          ? !income.payment_method_id
+          : income.payment_method_id === paymentMethodFilter);
+
+      return categoryMatches && paymentMethodMatches;
+    });
+  }, [categoryFilter, incomes, paymentMethodFilter]);
+
   const displayedIncomes = useMemo(() => {
     if (viewMode === "high") {
-      return [...incomes].sort((a, b) => b.amount - a.amount);
+      return [...filteredIncomes].sort((a, b) => b.amount - a.amount);
     }
 
     if (viewMode === "low") {
-      return [...incomes].sort((a, b) => a.amount - b.amount);
+      return [...filteredIncomes].sort((a, b) => a.amount - b.amount);
     }
 
-    return sortByDateDesc(incomes);
-  }, [incomes, viewMode]);
+    return sortByDateDesc(filteredIncomes);
+  }, [filteredIncomes, viewMode]);
 
   const groupedByDate = useMemo(() => {
     const groups = new Map<string, Income[]>();
 
-    for (const income of sortByDateDesc(incomes)) {
+    for (const income of sortByDateDesc(filteredIncomes)) {
       const group = groups.get(income.income_date) ?? [];
       group.push(income);
       groups.set(income.income_date, group);
@@ -148,12 +175,12 @@ export function IncomeManager() {
       items,
       total: items.reduce((sum, income) => sum + income.amount, 0),
     }));
-  }, [incomes]);
+  }, [filteredIncomes]);
 
   const chartData = useMemo(() => {
     const totals = new Map<string, number>();
 
-    for (const income of incomes) {
+    for (const income of filteredIncomes) {
       totals.set(
         income.income_date,
         (totals.get(income.income_date) ?? 0) + income.amount,
@@ -172,13 +199,13 @@ export function IncomeManager() {
     const topDay = [...entries].sort((a, b) => b.total - a.total)[0];
 
     return { entries, max, topDay };
-  }, [incomes]);
+  }, [filteredIncomes]);
 
   const fetchIncomes = useCallback(async (month: string) => {
     const { start, end } = getMonthRange(month);
     const { data, error } = await supabase
       .from("incomes")
-      .select("id, income_category_id, income_date, concept, amount, note")
+      .select("id, income_category_id, payment_method_id, income_date, concept, amount, note")
       .gte("income_date", start)
       .lte("income_date", end)
       .order("income_date", { ascending: false })
@@ -256,6 +283,28 @@ export function IncomeManager() {
     };
   }, []);
 
+  useEffect(() => {
+    let shouldIgnore = false;
+
+    supabase
+      .from("payment_methods")
+      .select("id, name")
+      .order("name", { ascending: true })
+      .then(({ data, error }) => {
+        if (shouldIgnore || error) {
+          return;
+        }
+
+        const methods = (data ?? []) as PaymentMethod[];
+        setPaymentMethods(methods);
+        setPaymentMethodId((current) => current || methods[0]?.id || "");
+      });
+
+    return () => {
+      shouldIgnore = true;
+    };
+  }, []);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSaving(true);
@@ -267,6 +316,12 @@ export function IncomeManager() {
 
     if (!cleanConcept) {
       setMessage("Escribe un concepto para identificar el ingreso.");
+      setIsSaving(false);
+      return;
+    }
+
+    if (!paymentMethodId) {
+      setMessage("Selecciona cómo recibiste este ingreso.");
       setIsSaving(false);
       return;
     }
@@ -298,6 +353,7 @@ export function IncomeManager() {
       income_category_id: incomeCategoryId || null,
       income_date: date,
       note: cleanNote || null,
+      payment_method_id: paymentMethodId,
     };
 
     const { error } = editingIncomeId
@@ -318,6 +374,7 @@ export function IncomeManager() {
 
     setConcept("");
     setIncomeCategoryId("");
+    setPaymentMethodId(paymentMethods[0]?.id ?? "");
     setAmount("");
     setNote("");
     setEditingIncomeId(null);
@@ -353,6 +410,7 @@ export function IncomeManager() {
     setDate(income.income_date);
     setConcept(income.concept);
     setIncomeCategoryId(income.income_category_id ?? "");
+    setPaymentMethodId(income.payment_method_id ?? paymentMethods[0]?.id ?? "");
     setAmount(String(income.amount));
     setNote(income.note ?? "");
     setMessage("Editando ingreso seleccionado.");
@@ -369,6 +427,7 @@ export function IncomeManager() {
     setDate(getTodayDateInput());
     setConcept("");
     setIncomeCategoryId("");
+    setPaymentMethodId(paymentMethods[0]?.id ?? "");
     setAmount("");
     setNote("");
     setMessage("");
@@ -388,6 +447,9 @@ export function IncomeManager() {
     const category = income.income_category_id
       ? incomeCategories.find((item) => item.id === income.income_category_id)
       : null;
+    const paymentMethod = income.payment_method_id
+      ? paymentMethods.find((item) => item.id === income.payment_method_id)
+      : null;
 
     return (
       <div
@@ -405,6 +467,9 @@ export function IncomeManager() {
               style={{ backgroundColor: category?.color ?? "#6b7280" }}
             />
             {category?.name ?? "Sin categoría"}
+          </p>
+          <p className="mt-1 text-xs text-neutral-500">
+            Método: {paymentMethod?.name ?? "Sin método"}
           </p>
           {income.note ? (
             <p className="mt-1 text-xs text-neutral-500">{income.note}</p>
@@ -516,6 +581,25 @@ export function IncomeManager() {
                 {incomeCategories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block">
+              <span className="text-sm font-medium text-neutral-300">
+                Método de pago
+              </span>
+              <select
+                value={paymentMethodId}
+                onChange={(event) => setPaymentMethodId(event.target.value)}
+                required
+                className={`${inputClass} mt-2`}
+              >
+                <option value="">Selecciona un método</option>
+                {paymentMethods.map((method) => (
+                  <option key={method.id} value={method.id}>
+                    {method.name}
                   </option>
                 ))}
               </select>
@@ -645,6 +729,45 @@ export function IncomeManager() {
               ))}
             </div>
           </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                Filtrar categoría
+              </span>
+              <select
+                value={categoryFilter}
+                onChange={(event) => setCategoryFilter(event.target.value)}
+                className={`${inputClass} mt-2`}
+              >
+                <option value="">Todas las categorías</option>
+                {incomeCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+                <option value="sin-categoria">Sin categoría</option>
+              </select>
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                Filtrar método
+              </span>
+              <select
+                value={paymentMethodFilter}
+                onChange={(event) => setPaymentMethodFilter(event.target.value)}
+                className={`${inputClass} mt-2`}
+              >
+                <option value="">Todos los métodos</option>
+                {paymentMethods.map((method) => (
+                  <option key={method.id} value={method.id}>
+                    {method.name}
+                  </option>
+                ))}
+                <option value="sin-metodo">Sin método</option>
+              </select>
+            </label>
+          </div>
         </div>
 
         {isLoading ? (
@@ -671,6 +794,10 @@ export function IncomeManager() {
               Registrar ingreso
             </button>
           </div>
+        ) : filteredIncomes.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-white/10 bg-black/20 px-4 py-6 text-sm text-neutral-300">
+            No hay ingresos que coincidan con los filtros seleccionados.
+          </p>
         ) : viewMode === "chart" ? (
           <div className="rounded-2xl border border-white/10 bg-black/20 p-5">
             <div className="mb-6 flex items-center justify-between gap-4">
