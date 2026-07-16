@@ -243,6 +243,22 @@ export function DashboardOverview() {
     );
   }, [pendingPayments]);
 
+  const currentMonthKey = today.slice(0, 7);
+  const currentMonthName = new Intl.DateTimeFormat("es-MX", {
+    month: "long",
+  }).format(new Date(`${currentMonthKey}-01T00:00:00`));
+  const currentMonthPendingPayments = useMemo(() => {
+    return pendingPayments.filter((payment) =>
+      payment.due_date.startsWith(currentMonthKey),
+    );
+  }, [currentMonthKey, pendingPayments]);
+  const currentMonthPendingTotal = useMemo(() => {
+    return currentMonthPendingPayments.reduce(
+      (sum, payment) => sum + Number(payment.amount),
+      0,
+    );
+  }, [currentMonthPendingPayments]);
+
   const pendingPaymentSummary = useMemo(() => {
     return pendingPayments.reduce(
       (result, payment) => {
@@ -368,8 +384,7 @@ export function DashboardOverview() {
           .from("fixed_expenses")
           .select("id, concept, amount, due_date, status")
           .eq("status", "pending")
-          .order("due_date", { ascending: true })
-          .limit(6),
+          .order("due_date", { ascending: true }),
       ]);
 
       if (!incomesResult.error) {
@@ -446,7 +461,19 @@ export function DashboardOverview() {
       warning: balance < 0,
     },
     {
-      label: "Pendientes",
+      label: `Pendientes de ${currentMonthName}`,
+      value: formatCurrency(currentMonthPendingTotal),
+      helper: isLoading
+        ? "Cargando..."
+        : currentMonthPendingPayments.length > 0
+          ? `${currentMonthPendingPayments.length} por pagar este mes`
+          : "Mes cubierto",
+      href: "/pendientes",
+      icon: CalendarDays,
+      tone: "pending",
+    },
+    {
+      label: "Pendientes totales",
       value: formatCurrency(pendingPaymentTotal),
       helper: isLoading
         ? "Cargando..."
@@ -463,7 +490,7 @@ export function DashboardOverview() {
 
   return (
     <>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {stats.map((stat) => {
           const Icon = stat.icon;
 
@@ -475,6 +502,8 @@ export function DashboardOverview() {
                   ? "border-emerald-300 bg-emerald-50"
                   : stat.tone === "expense"
                     ? "border-red-300 bg-red-50"
+                    : stat.tone === "pending"
+                      ? "border-yellow-300/40 bg-yellow-300/10"
                     : stat.warning
                       ? "border-red-400/25 bg-red-500/10"
                       : stat.featured
@@ -490,6 +519,8 @@ export function DashboardOverview() {
                         ? "text-emerald-800"
                         : stat.tone === "expense"
                           ? "text-red-800"
+                          : stat.tone === "pending"
+                            ? "text-yellow-100"
                         : stat.warning
                           ? "text-red-100"
                           : stat.featured
@@ -505,6 +536,8 @@ export function DashboardOverview() {
                         ? "text-emerald-900"
                         : stat.tone === "expense"
                           ? "text-red-900"
+                          : stat.tone === "pending"
+                            ? "text-yellow-100"
                         : stat.warning
                           ? "text-red-100"
                           : stat.featured
@@ -524,6 +557,8 @@ export function DashboardOverview() {
                         ? "border-emerald-300 bg-white text-emerald-800"
                         : stat.tone === "expense"
                           ? "border-red-300 bg-white text-red-800"
+                          : stat.tone === "pending"
+                            ? "border-yellow-300/40 bg-yellow-300/10 text-yellow-100"
                         : stat.warning
                           ? "border-red-400/25 bg-red-500/10 text-red-100"
                           : stat.featured
@@ -540,6 +575,8 @@ export function DashboardOverview() {
                         ? "border-emerald-300 bg-white text-emerald-800"
                         : stat.tone === "expense"
                           ? "border-red-300 bg-white text-red-800"
+                          : stat.tone === "pending"
+                            ? "border-yellow-300/40 bg-yellow-300/10 text-yellow-100"
                         : stat.warning
                           ? "border-red-400/25 bg-red-500/10 text-red-100"
                           : stat.featured
