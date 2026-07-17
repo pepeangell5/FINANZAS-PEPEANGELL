@@ -12,6 +12,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   CalendarDays,
+  CalendarRange,
   ChartColumn,
   CheckCircle2,
   ChevronDown,
@@ -87,11 +88,13 @@ type ReportView =
   | "income-categories"
   | "buckets";
 
+type PeriodMode = "month" | "range";
+
 const inputClass =
   "h-11 w-full rounded-lg border border-white/10 bg-black/35 px-3 text-sm text-white outline-none transition placeholder:text-neutral-600 focus:border-emerald-300/70 focus:ring-2 focus:ring-emerald-300/15";
 
 const reportOptions: Array<{ label: string; value: ReportView }> = [
-  { label: "Lectura del mes", value: "reading" },
+  { label: "Lectura del período", value: "reading" },
   { label: "Ingresos vs gastos por día", value: "daily" },
   { label: "Pagos pendientes", value: "pending" },
   { label: "Pagos pendientes ya pagados", value: "paid-pending" },
@@ -112,15 +115,20 @@ function getMonthRange(month: string) {
   return { end, start };
 }
 
-function getDaysInMonth(month: string) {
-  const [year, monthNumber] = month.split("-").map(Number);
+function getCurrentYearRange() {
+  const year = getTodayDateInput().slice(0, 4);
 
-  return new Date(year, monthNumber, 0).getDate();
+  return { end: `${year}-12-31`, start: `${year}-01-01` };
 }
 
 export function ReportManager() {
   const detailSectionRef = useRef<HTMLDivElement>(null);
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthInput());
+  const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
+  const [rangeStart, setRangeStart] = useState(
+    () => getCurrentYearRange().start,
+  );
+  const [rangeEnd, setRangeEnd] = useState(() => getCurrentYearRange().end);
   const [selectedReport, setSelectedReport] = useState<ReportView>("reading");
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -157,45 +165,48 @@ export function ReportManager() {
 
   const balance = totalIncome - totalExpense;
 
+  const activeRange =
+    periodMode === "month"
+      ? getMonthRange(selectedMonth)
+      : { end: rangeEnd, start: rangeStart };
+
   const dailyReport = useMemo(() => {
-    const days = Array.from(
-      { length: getDaysInMonth(selectedMonth) },
-      (_, index) => {
-        const day = index + 1;
-        const date = `${selectedMonth}-${String(day).padStart(2, "0")}`;
+    const byDate = new Map<
+      string,
+      { balance: number; date: string; day: number; expense: number; income: number }
+    >();
 
-        return {
-          balance: 0,
-          date,
-          day,
-          expense: 0,
-          income: 0,
-        };
-      },
-    );
+    function getEntry(date: string) {
+      const current = byDate.get(date);
 
-    const byDate = new Map(days.map((day) => [day.date, day]));
+      if (current) {
+        return current;
+      }
+
+      const entry = {
+        balance: 0,
+        date,
+        day: Number(date.slice(8, 10)),
+        expense: 0,
+        income: 0,
+      };
+      byDate.set(date, entry);
+
+      return entry;
+    }
 
     for (const income of incomes) {
-      const entry = byDate.get(income.income_date);
-
-      if (entry) {
-        entry.income += income.amount;
-      }
+      getEntry(income.income_date).income += income.amount;
     }
 
     for (const expense of expenses) {
-      const entry = byDate.get(expense.expense_date);
-
-      if (entry) {
-        entry.expense += expense.amount;
-      }
+      getEntry(expense.expense_date).expense += expense.amount;
     }
 
-    return days
+    return Array.from(byDate.values())
       .map((day) => ({ ...day, balance: day.income - day.expense }))
-      .filter((day) => day.income > 0 || day.expense > 0);
-  }, [expenses, incomes, selectedMonth]);
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [expenses, incomes]);
 
   const maxDailyAmount = useMemo(() => {
     return Math.max(
@@ -353,7 +364,7 @@ export function ReportManager() {
 
     if (totalIncome === 0 && totalExpense > 0) {
       insights.push({
-        description: "Hay gastos registrados, pero todavía no hay ingresos en este mes.",
+        description: "Hay gastos registrados, pero todavía no hay ingresos en este período.",
         title: "Faltan ingresos",
         tone: "warning",
       });
@@ -373,7 +384,7 @@ export function ReportManager() {
       });
     } else if (totalIncome > 0) {
       insights.push({
-        description: `Se conserva un balance de ${formatCurrency(balance)} al cierre visual del mes.`,
+        description: `Se conserva un balance de ${formatCurrency(balance)} al cierre visual del período.`,
         title: "Balance saludable",
         tone: "success",
       });
@@ -419,9 +430,7 @@ export function ReportManager() {
     totalMovements,
   ]);
 
-  const fetchReportData = useCallback(async (month: string) => {
-    const { start, end } = getMonthRange(month);
-
+  const fetchReportData = useCallback(async (start: string, end: string) => {
     return Promise.all([
       supabase
         .from("incomes")
@@ -456,7 +465,7 @@ export function ReportManager() {
   useEffect(() => {
     let shouldIgnore = false;
 
-    fetchReportData(selectedMonth).then(
+    fetchReportData(activeRange.start, activeRange.end).then(
       ([
         incomeResult,
         expenseResult,
@@ -514,58 +523,156 @@ export function ReportManager() {
     return () => {
       shouldIgnore = true;
     };
-  }, [fetchReportData, selectedMonth]);
+  }, [activeRange.end, activeRange.start, fetchReportData, periodMode]);
 
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-xl shadow-black/20">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <BrandedSectionHeading
-            title="Reporte mensual"
+            title={periodMode === "month" ? "Reporte mensual" : "Reporte por rango"}
             description="Resumen visual de ingresos, gastos, balance y destino del dinero."
           />
 
-          <div className="grid w-full gap-3 sm:grid-cols-2 lg:max-w-[520px]">
-            <label className="block">
-              <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                Mes
-              </span>
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(event) => {
+          <div className="w-full lg:max-w-[760px]">
+            <div className="mb-4 flex flex-wrap gap-2" aria-label="Tipo de período">
+              <button
+                type="button"
+                onClick={() => {
+                  if (periodMode === "month") {
+                    return;
+                  }
+
                   setIsLoading(true);
                   setMessage("");
-                  setSelectedMonth(event.target.value);
+                  setPeriodMode("month");
                 }}
-                className={`${inputClass} mt-2`}
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                Ver detalle
-              </span>
-              <select
-                value={selectedReport}
-                onChange={(event) => {
-                  setSelectedReport(event.target.value as ReportView);
-                  window.setTimeout(() => {
-                    detailSectionRef.current?.scrollIntoView({
-                      behavior: "smooth",
-                      block: "start",
-                    });
-                  }, 50);
-                }}
-                className={`${inputClass} mt-2`}
+                className={`flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition ${
+                  periodMode === "month"
+                    ? "border-pink-300 bg-pink-300 text-neutral-950"
+                    : "border-white/10 bg-black/20 text-neutral-300 hover:border-pink-300/50 hover:text-pink-100"
+                }`}
               >
-                {reportOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <CalendarDays className="h-4 w-4" />
+                Por mes
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (periodMode === "range") {
+                    return;
+                  }
+
+                  setIsLoading(true);
+                  setMessage("");
+                  setPeriodMode("range");
+                }}
+                className={`flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-sm font-semibold transition ${
+                  periodMode === "range"
+                    ? "border-pink-300 bg-pink-300 text-neutral-950"
+                    : "border-white/10 bg-black/20 text-neutral-300 hover:border-pink-300/50 hover:text-pink-100"
+                }`}
+              >
+                <CalendarRange className="h-4 w-4" />
+                Rango de fechas
+              </button>
+            </div>
+
+            <div
+              className={`grid gap-3 sm:grid-cols-2 ${
+                periodMode === "range" ? "xl:grid-cols-3" : ""
+              }`}
+            >
+              {periodMode === "month" ? (
+                <label className="block">
+                  <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                    Mes
+                  </span>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(event) => {
+                      if (!event.target.value) {
+                        return;
+                      }
+
+                      setIsLoading(true);
+                      setMessage("");
+                      setSelectedMonth(event.target.value);
+                    }}
+                    className={`${inputClass} mt-2`}
+                  />
+                </label>
+              ) : (
+                <>
+                  <label className="block">
+                    <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                      Fecha inicial
+                    </span>
+                    <input
+                      type="date"
+                      value={rangeStart}
+                      max={rangeEnd}
+                      onChange={(event) => {
+                        if (!event.target.value) {
+                          return;
+                        }
+
+                        setIsLoading(true);
+                        setMessage("");
+                        setRangeStart(event.target.value);
+                      }}
+                      className={`${inputClass} mt-2`}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                      Fecha final
+                    </span>
+                    <input
+                      type="date"
+                      value={rangeEnd}
+                      min={rangeStart}
+                      onChange={(event) => {
+                        if (!event.target.value) {
+                          return;
+                        }
+
+                        setIsLoading(true);
+                        setMessage("");
+                        setRangeEnd(event.target.value);
+                      }}
+                      className={`${inputClass} mt-2`}
+                    />
+                  </label>
+                </>
+              )}
+
+              <label className="block">
+                <span className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                  Ver detalle
+                </span>
+                <select
+                  value={selectedReport}
+                  onChange={(event) => {
+                    setSelectedReport(event.target.value as ReportView);
+                    window.setTimeout(() => {
+                      detailSectionRef.current?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }, 50);
+                  }}
+                  className={`${inputClass} mt-2`}
+                >
+                  {reportOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
           </div>
         </div>
 
@@ -579,7 +686,7 @@ export function ReportManager() {
       <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-xl shadow-black/20">
         <BrandedSectionHeading
           title="Panel ejecutivo"
-          description="Vista general del mes seleccionado antes de entrar al detalle."
+          description="Vista general del período seleccionado antes de entrar al detalle."
           trailing={
             <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-200">
               <ChartColumn className="h-5 w-5" />
@@ -681,7 +788,7 @@ export function ReportManager() {
       <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-xl shadow-black/20">
         <BrandedSectionHeading
           title="Interpretación rápida"
-          description="Lectura automática del comportamiento del mes."
+          description="Lectura automática del comportamiento del período."
           trailing={
             <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-200">
               <Trophy className="h-5 w-5" />
@@ -792,8 +899,8 @@ export function ReportManager() {
       {selectedReport === "reading" ? (
       <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-xl shadow-black/20">
         <BrandedSectionHeading
-          title="Lectura del mes"
-          description="Indicadores rápidos para entender el comportamiento del periodo."
+          title="Lectura del período"
+          description="Indicadores rápidos para entender el comportamiento del período."
           trailing={
             <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-200">
               <Trophy className="h-5 w-5" />
@@ -873,7 +980,7 @@ export function ReportManager() {
       <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-5 shadow-xl shadow-black/20">
         <BrandedSectionHeading
           title="Ingresos vs gastos por día"
-          description="Días del mes con movimientos registrados."
+          description="Días del período con movimientos registrados."
           trailing={
             <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-300/25 bg-emerald-300/10 text-emerald-200">
               <Scale className="h-5 w-5" />
@@ -888,7 +995,7 @@ export function ReportManager() {
         ) : dailyReport.length === 0 ? (
           <div className="mt-5 rounded-2xl border border-dashed border-white/10 bg-black/20 p-8 text-center">
             <p className="text-lg font-semibold text-white">
-              No hay movimientos en este mes.
+              No hay movimientos en este período.
             </p>
             <p className="mt-2 text-sm text-neutral-400">
               Agrega ingresos o gastos para ver el reporte visual.
@@ -996,18 +1103,18 @@ export function ReportManager() {
       {selectedReport === "pending" ? (
         <PaymentReport
           categories={categoryById}
-          emptyText="No hay pagos pendientes para este mes."
+          emptyText="No hay pagos pendientes para este período."
           icon={<ClockAlert className="h-5 w-5" />}
           payments={pendingPayments}
           total={pendingPaymentTotal}
-          title="Pagos pendientes del mes"
+          title="Pagos pendientes del período"
         />
       ) : null}
 
       {selectedReport === "paid-pending" ? (
         <PaymentReport
           categories={categoryById}
-          emptyText="No hay pagos pendientes pagados en este mes."
+          emptyText="No hay pagos pendientes pagados en este período."
           icon={<CheckCircle2 className="h-5 w-5" />}
           payments={paidPendingPayments}
           showPaidDate
@@ -1030,7 +1137,7 @@ export function ReportManager() {
           items={incomesByCategory}
           maxAmount={maxIncomeCategoryAmount}
           title="Ingresos por categoría"
-          description="Fuentes desde donde entró el dinero durante el mes."
+          description="Fuentes desde donde entró el dinero durante el período."
         />
       ) : null}
 
