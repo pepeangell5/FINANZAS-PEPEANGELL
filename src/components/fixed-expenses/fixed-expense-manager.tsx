@@ -13,6 +13,8 @@ import {
   CalendarDays,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   ClockAlert,
   Pencil,
@@ -133,6 +135,23 @@ function getDayDifference(dueDate: string, today: string) {
   return Math.round((due - current) / 86_400_000);
 }
 
+function formatMonthLabel(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  const label = new Intl.DateTimeFormat("es-MX", {
+    month: "long",
+    year: "numeric",
+  }).format(new Date(year, month - 1, 1));
+
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)}`;
+}
+
+function shiftMonth(value: string, offset: number) {
+  const [year, month] = value.split("-").map(Number);
+  const nextMonth = new Date(year, month - 1 + offset, 1);
+
+  return `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function getPaymentStatus(payment: FixedExpense, today: string) {
   if (payment.status === "paid") {
     return {
@@ -234,6 +253,10 @@ export function FixedExpenseManager() {
   const [isRecurring, setIsRecurring] = useState(false);
   const [note, setNote] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("pending");
+  const [selectedMonth, setSelectedMonth] = useState(() =>
+    getTodayDateInput().slice(0, 7),
+  );
+  const [showAllMonths, setShowAllMonths] = useState(false);
   const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<PendingConfirmation>(null);
   const [confirmationError, setConfirmationError] = useState("");
@@ -302,8 +325,39 @@ export function FixedExpenseManager() {
     );
   }, [payments, today]);
 
+  const periodPayments = useMemo(() => {
+    if (showAllMonths) {
+      return payments;
+    }
+
+    return payments.filter((payment) =>
+      payment.due_date.startsWith(selectedMonth),
+    );
+  }, [payments, selectedMonth, showAllMonths]);
+
+  const periodSummary = useMemo(() => {
+    return periodPayments.reduce(
+      (result, payment) => {
+        if (payment.status === "paid") {
+          result.paid += 1;
+          result.paidTotal += payment.amount;
+        } else {
+          result.pending += 1;
+          result.pendingTotal += payment.amount;
+        }
+
+        return result;
+      },
+      { paid: 0, paidTotal: 0, pending: 0, pendingTotal: 0 },
+    );
+  }, [periodPayments]);
+
+  const periodLabel = showAllMonths
+    ? "Todos los meses"
+    : formatMonthLabel(selectedMonth);
+
   const displayedPayments = useMemo(() => {
-    const sorted = sortPayments(payments, today);
+    const sorted = sortPayments(periodPayments, today);
 
     if (viewMode === "pending") {
       return sorted.filter((payment) => payment.status === "pending");
@@ -322,7 +376,7 @@ export function FixedExpenseManager() {
     }
 
     return sorted;
-  }, [payments, today, viewMode]);
+  }, [periodPayments, today, viewMode]);
 
   const fetchData = useCallback(async () => {
     const [paymentsResult, categoriesResult, paymentMethodsResult] = await Promise.all([
@@ -1123,7 +1177,10 @@ export function FixedExpenseManager() {
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           <button
             type="button"
-            onClick={() => setViewMode("pending")}
+            onClick={() => {
+              setShowAllMonths(true);
+              setViewMode("pending");
+            }}
             className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${
               viewMode === "pending"
                 ? "border-yellow-300/40 bg-yellow-300/15"
@@ -1147,7 +1204,10 @@ export function FixedExpenseManager() {
 
           <button
             type="button"
-            onClick={() => setViewMode("paid")}
+            onClick={() => {
+              setShowAllMonths(true);
+              setViewMode("paid");
+            }}
             className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${
               viewMode === "paid"
                 ? "border-emerald-300/30 bg-emerald-300/10"
@@ -1197,7 +1257,10 @@ export function FixedExpenseManager() {
 
           <button
             type="button"
-            onClick={() => setViewMode("overdue")}
+            onClick={() => {
+              setShowAllMonths(true);
+              setViewMode("overdue");
+            }}
             className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${
               viewMode === "overdue"
                 ? "border-red-300/40 bg-red-500/15"
@@ -1227,20 +1290,135 @@ export function FixedExpenseManager() {
               description="Semáforo automático: amarillo cuando se acerca, rojo cuando vence o se atrasa."
             />
 
-            <div className="flex flex-wrap gap-2">
-              {viewOptions.map((option) => (
+            <div className="border-y border-white/10 py-4">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase text-neutral-500">
+                    Período
+                  </p>
+                  <p className="mt-1 text-lg font-semibold text-white">
+                    {periodLabel}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMonth((current) => shiftMonth(current, -1));
+                      setShowAllMonths(false);
+                    }}
+                    title="Mes anterior"
+                    aria-label="Mostrar mes anterior"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/20 text-neutral-300 transition hover:border-pink-300/50 hover:text-pink-100"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(event) => {
+                      if (event.target.value) {
+                        setSelectedMonth(event.target.value);
+                        setShowAllMonths(false);
+                      }
+                    }}
+                    aria-label="Seleccionar mes de pagos"
+                    className="h-10 min-w-[168px] rounded-lg border border-white/10 bg-black/35 px-3 text-sm text-white outline-none transition focus:border-pink-300/70 focus:ring-2 focus:ring-pink-300/15"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMonth((current) => shiftMonth(current, 1));
+                      setShowAllMonths(false);
+                    }}
+                    title="Mes siguiente"
+                    aria-label="Mostrar mes siguiente"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/20 text-neutral-300 transition hover:border-pink-300/50 hover:text-pink-100"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedMonth(today.slice(0, 7));
+                      setShowAllMonths(false);
+                    }}
+                    className={`h-10 rounded-lg border px-3 text-sm font-medium transition ${
+                      !showAllMonths && selectedMonth === today.slice(0, 7)
+                        ? "border-pink-300 bg-pink-300 text-neutral-950"
+                        : "border-white/10 bg-black/20 text-neutral-300 hover:border-pink-300/50 hover:text-pink-100"
+                    }`}
+                  >
+                    Mes actual
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAllMonths(true)}
+                    className={`h-10 rounded-lg border px-3 text-sm font-medium transition ${
+                      showAllMonths
+                        ? "border-pink-300 bg-pink-300 text-neutral-950"
+                        : "border-white/10 bg-black/20 text-neutral-300 hover:border-pink-300/50 hover:text-pink-100"
+                    }`}
+                  >
+                    Todos los meses
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid border-t border-white/10 pt-4 sm:grid-cols-2 sm:divide-x sm:divide-white/10">
                 <button
-                  key={option.value}
                   type="button"
-                  onClick={() => setViewMode(option.value)}
-                  className={`h-10 rounded-lg border px-3 text-sm font-medium transition ${getViewOptionClass(
-                    option.value,
-                    viewMode === option.value,
-                  )}`}
+                  onClick={() => setViewMode("pending")}
+                  className="px-1 py-2 text-left transition hover:text-yellow-100 sm:pr-5"
                 >
-                  {option.label}
+                  <span className="text-sm text-yellow-100">
+                    Pendientes del período
+                  </span>
+                  <span className="mt-1 block text-xl font-bold text-white">
+                    {formatCurrency(periodSummary.pendingTotal)}
+                  </span>
+                  <span className="mt-1 block text-xs text-neutral-500">
+                    {periodSummary.pending} por pagar
+                  </span>
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setViewMode("paid")}
+                  className="border-t border-white/10 px-1 py-2 text-left transition hover:text-emerald-100 sm:border-t-0 sm:pl-5"
+                >
+                  <span className="text-sm text-emerald-100">
+                    Pagados del período
+                  </span>
+                  <span className="mt-1 block text-xl font-bold text-white">
+                    {formatCurrency(periodSummary.paidTotal)}
+                  </span>
+                  <span className="mt-1 block text-xs text-neutral-500">
+                    {periodSummary.paid} cubiertos
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase text-neutral-500">
+                Estado
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {viewOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setViewMode(option.value)}
+                    className={`h-10 rounded-lg border px-3 text-sm font-medium transition ${getViewOptionClass(
+                      option.value,
+                      viewMode === option.value,
+                    )}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
