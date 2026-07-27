@@ -163,6 +163,16 @@ export function ExpenseManager() {
     });
   }, [categoryFilter, expenses, paymentMethodFilter]);
 
+  const filteredTotal = useMemo(
+    () =>
+      filteredExpenses.reduce(
+        (sum, expense) => sum + Number(expense.amount),
+        0,
+      ),
+    [filteredExpenses],
+  );
+  const hasActiveFilters = Boolean(categoryFilter || paymentMethodFilter);
+
   const displayedExpenses = useMemo(() => {
     if (viewMode === "high") {
       return [...filteredExpenses].sort((a, b) => b.amount - a.amount);
@@ -745,11 +755,29 @@ export function ExpenseManager() {
             title="Gastos registrados"
             description="Consulta movimientos por mes, fecha, monto, categoría o gráfica."
             trailing={
-              <div className="rounded-xl border border-red-300/25 bg-red-300/10 px-4 py-3">
-                <p className="text-xs text-red-100">Total del mes</p>
-                <p className="mt-1 text-lg font-semibold text-red-100">
-                  {formatCurrency(total)}
-                </p>
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                <div className="rounded-xl border border-red-300/25 bg-red-300/10 px-4 py-3">
+                  <p className="text-xs text-red-100">Total del mes</p>
+                  <p className="mt-1 text-lg font-semibold text-red-100">
+                    {formatCurrency(total)}
+                  </p>
+                </div>
+                {hasActiveFilters ? (
+                  <div className="rounded-xl border border-pink-300/30 bg-pink-300/10 px-4 py-3">
+                    <p className="text-xs text-pink-100">
+                      Total de la selección
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-pink-200">
+                      {formatCurrency(filteredTotal)}
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-400">
+                      {filteredExpenses.length}{" "}
+                      {filteredExpenses.length === 1
+                        ? "movimiento"
+                        : "movimientos"}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             }
           />

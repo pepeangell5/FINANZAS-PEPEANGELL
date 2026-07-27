@@ -149,6 +149,16 @@ export function IncomeManager() {
     });
   }, [categoryFilter, incomes, paymentMethodFilter]);
 
+  const filteredTotal = useMemo(
+    () =>
+      filteredIncomes.reduce(
+        (sum, income) => sum + Number(income.amount),
+        0,
+      ),
+    [filteredIncomes],
+  );
+  const hasActiveFilters = Boolean(categoryFilter || paymentMethodFilter);
+
   const displayedIncomes = useMemo(() => {
     if (viewMode === "high") {
       return [...filteredIncomes].sort((a, b) => b.amount - a.amount);
@@ -687,11 +697,29 @@ export function IncomeManager() {
             title="Ingresos registrados"
             description="Consulta movimientos por mes, fecha, monto o gráfica."
             trailing={
-              <div className="rounded-xl border border-emerald-300/25 bg-emerald-300/10 px-4 py-3">
-                <p className="text-xs text-emerald-100">Total del mes</p>
-                <p className="mt-1 text-lg font-semibold text-emerald-200">
-                  {formatCurrency(total)}
-                </p>
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                <div className="rounded-xl border border-emerald-300/25 bg-emerald-300/10 px-4 py-3">
+                  <p className="text-xs text-emerald-100">Total del mes</p>
+                  <p className="mt-1 text-lg font-semibold text-emerald-200">
+                    {formatCurrency(total)}
+                  </p>
+                </div>
+                {hasActiveFilters ? (
+                  <div className="rounded-xl border border-pink-300/30 bg-pink-300/10 px-4 py-3">
+                    <p className="text-xs text-pink-100">
+                      Total de la selección
+                    </p>
+                    <p className="mt-1 text-lg font-semibold text-pink-200">
+                      {formatCurrency(filteredTotal)}
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-400">
+                      {filteredIncomes.length}{" "}
+                      {filteredIncomes.length === 1
+                        ? "movimiento"
+                        : "movimientos"}
+                    </p>
+                  </div>
+                ) : null}
               </div>
             }
           />
