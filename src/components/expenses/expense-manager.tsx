@@ -763,14 +763,14 @@ export function ExpenseManager() {
                   </p>
                 </div>
                 {hasActiveFilters ? (
-                  <div className="rounded-xl border border-pink-300/30 bg-pink-300/10 px-4 py-3">
-                    <p className="text-xs text-pink-100">
+                  <div className="filtered-total-card rounded-xl border px-4 py-3">
+                    <p className="filtered-total-card-label text-xs">
                       Total de la selección
                     </p>
-                    <p className="mt-1 text-lg font-semibold text-pink-200">
+                    <p className="filtered-total-card-value mt-1 text-lg font-semibold">
                       {formatCurrency(filteredTotal)}
                     </p>
-                    <p className="mt-1 text-xs text-neutral-400">
+                    <p className="filtered-total-card-meta mt-1 text-xs">
                       {filteredExpenses.length}{" "}
                       {filteredExpenses.length === 1
                         ? "movimiento"
