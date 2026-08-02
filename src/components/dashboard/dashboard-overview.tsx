@@ -97,6 +97,7 @@ export function DashboardOverview() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [buckets, setBuckets] = useState<AllocationBucket[]>([]);
   const [pendingPayments, setPendingPayments] = useState<FixedExpense[]>([]);
+  const [previousBalance, setPreviousBalance] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const monthlyIncome = useMemo(
@@ -110,6 +111,7 @@ export function DashboardOverview() {
   );
 
   const balance = monthlyIncome - monthlyExpense;
+  const availableBalance = (previousBalance ?? 0) + balance;
   const today = getTodayDateInput();
 
   const categoryBucketById = useMemo(() => {
@@ -362,6 +364,8 @@ export function DashboardOverview() {
         categoriesResult,
         bucketsResult,
         pendingPaymentsResult,
+        previousIncomesResult,
+        previousExpensesResult,
       ] = await Promise.all([
         supabase
           .from("incomes")
@@ -385,6 +389,8 @@ export function DashboardOverview() {
           .select("id, concept, amount, due_date, status")
           .eq("status", "pending")
           .order("due_date", { ascending: true }),
+        supabase.from("incomes").select("amount").lt("income_date", start),
+        supabase.from("expenses").select("amount").lt("expense_date", start),
       ]);
 
       if (!incomesResult.error) {
@@ -429,6 +435,19 @@ export function DashboardOverview() {
         );
       }
 
+      if (!previousIncomesResult.error && !previousExpensesResult.error) {
+        const previousIncomeTotal = (previousIncomesResult.data ?? []).reduce(
+          (sum, income) => sum + Number(income.amount),
+          0,
+        );
+        const previousExpenseTotal = (previousExpensesResult.data ?? []).reduce(
+          (sum, expense) => sum + Number(expense.amount),
+          0,
+        );
+
+        setPreviousBalance(previousIncomeTotal - previousExpenseTotal);
+      }
+
       setIsLoading(false);
     }
 
@@ -453,12 +472,27 @@ export function DashboardOverview() {
       tone: "expense",
     },
     {
-      label: "Balance",
+      label: "Balance del mes",
       value: formatCurrency(balance),
-      helper: balance >= 0 ? "Disponible estimado" : "Gasto mayor al ingreso",
+      helper:
+        balance >= 0 ? "Movimiento neto del mes" : "Gasto mayor al ingreso",
       icon: Wallet,
-      featured: true,
       warning: balance < 0,
+    },
+    {
+      label: "Saldo disponible",
+      value:
+        isLoading || previousBalance === null
+          ? "--"
+          : formatCurrency(availableBalance),
+      helper: isLoading
+        ? "Cargando saldo anterior..."
+        : previousBalance === null
+          ? "No se pudo calcular el saldo anterior"
+          : `Saldo anterior: ${formatCurrency(previousBalance)}`,
+      icon: PiggyBank,
+      featured: true,
+      warning: previousBalance !== null && availableBalance < 0,
     },
     {
       label: `Pendientes de ${currentMonthName}`,
@@ -490,7 +524,7 @@ export function DashboardOverview() {
 
   return (
     <>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {stats.map((stat) => {
           const Icon = stat.icon;
 
