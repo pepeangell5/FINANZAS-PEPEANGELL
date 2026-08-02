@@ -70,6 +70,16 @@ function getCurrentMonthRange() {
   return { start, end };
 }
 
+function getPreviousMonthRange() {
+  const now = new Date();
+  const start = formatDateInput(
+    new Date(now.getFullYear(), now.getMonth() - 1, 1),
+  );
+  const end = formatDateInput(new Date(now.getFullYear(), now.getMonth(), 0));
+
+  return { start, end };
+}
+
 function getDayDifference(dueDate: string, today: string) {
   const due = new Date(`${dueDate}T00:00:00`).getTime();
   const current = new Date(`${today}T00:00:00`).getTime();
@@ -97,7 +107,9 @@ export function DashboardOverview() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [buckets, setBuckets] = useState<AllocationBucket[]>([]);
   const [pendingPayments, setPendingPayments] = useState<FixedExpense[]>([]);
-  const [previousBalance, setPreviousBalance] = useState<number | null>(null);
+  const [previousMonthBalance, setPreviousMonthBalance] = useState<
+    number | null
+  >(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const monthlyIncome = useMemo(
@@ -111,7 +123,7 @@ export function DashboardOverview() {
   );
 
   const balance = monthlyIncome - monthlyExpense;
-  const availableBalance = (previousBalance ?? 0) + balance;
+  const availableBalance = (previousMonthBalance ?? 0) + balance;
   const today = getTodayDateInput();
 
   const categoryBucketById = useMemo(() => {
@@ -249,6 +261,16 @@ export function DashboardOverview() {
   const currentMonthName = new Intl.DateTimeFormat("es-MX", {
     month: "long",
   }).format(new Date(`${currentMonthKey}-01T00:00:00`));
+  const currentMonthDate = new Date(`${currentMonthKey}-01T00:00:00`);
+  const previousMonthName = new Intl.DateTimeFormat("es-MX", {
+    month: "long",
+  }).format(
+    new Date(
+      currentMonthDate.getFullYear(),
+      currentMonthDate.getMonth() - 1,
+      1,
+    ),
+  );
   const currentMonthPendingPayments = useMemo(() => {
     return pendingPayments.filter((payment) =>
       payment.due_date.startsWith(currentMonthKey),
@@ -357,6 +379,7 @@ export function DashboardOverview() {
   useEffect(() => {
     async function loadDashboard() {
       const { start, end } = getCurrentMonthRange();
+      const previousMonthRange = getPreviousMonthRange();
 
       const [
         incomesResult,
@@ -389,8 +412,16 @@ export function DashboardOverview() {
           .select("id, concept, amount, due_date, status")
           .eq("status", "pending")
           .order("due_date", { ascending: true }),
-        supabase.from("incomes").select("amount").lt("income_date", start),
-        supabase.from("expenses").select("amount").lt("expense_date", start),
+        supabase
+          .from("incomes")
+          .select("amount")
+          .gte("income_date", previousMonthRange.start)
+          .lte("income_date", previousMonthRange.end),
+        supabase
+          .from("expenses")
+          .select("amount")
+          .gte("expense_date", previousMonthRange.start)
+          .lte("expense_date", previousMonthRange.end),
       ]);
 
       if (!incomesResult.error) {
@@ -445,7 +476,7 @@ export function DashboardOverview() {
           0,
         );
 
-        setPreviousBalance(previousIncomeTotal - previousExpenseTotal);
+        setPreviousMonthBalance(previousIncomeTotal - previousExpenseTotal);
       }
 
       setIsLoading(false);
@@ -482,17 +513,17 @@ export function DashboardOverview() {
     {
       label: "Saldo disponible",
       value:
-        isLoading || previousBalance === null
+        isLoading || previousMonthBalance === null
           ? "--"
           : formatCurrency(availableBalance),
       helper: isLoading
-        ? "Cargando saldo anterior..."
-        : previousBalance === null
-          ? "No se pudo calcular el saldo anterior"
-          : `Saldo anterior: ${formatCurrency(previousBalance)}`,
+        ? "Cargando balance anterior..."
+        : previousMonthBalance === null
+          ? "No se pudo calcular el mes anterior"
+          : `Balance de ${previousMonthName}: ${formatCurrency(previousMonthBalance)}`,
       icon: PiggyBank,
       featured: true,
-      warning: previousBalance !== null && availableBalance < 0,
+      warning: previousMonthBalance !== null && availableBalance < 0,
     },
     {
       label: `Pendientes de ${currentMonthName}`,
