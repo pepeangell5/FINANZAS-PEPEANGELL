@@ -58,6 +58,8 @@ type FixedExpense = {
   status: "pending" | "paid";
 };
 
+const BALANCE_TRACKING_START = "2026-07-01";
+
 function getCurrentMonthRange() {
   const now = new Date();
   const start = formatDateInput(
@@ -66,16 +68,6 @@ function getCurrentMonthRange() {
   const end = formatDateInput(
     new Date(now.getFullYear(), now.getMonth() + 1, 0),
   );
-
-  return { start, end };
-}
-
-function getPreviousMonthRange() {
-  const now = new Date();
-  const start = formatDateInput(
-    new Date(now.getFullYear(), now.getMonth() - 1, 1),
-  );
-  const end = formatDateInput(new Date(now.getFullYear(), now.getMonth(), 0));
 
   return { start, end };
 }
@@ -107,7 +99,7 @@ export function DashboardOverview() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [buckets, setBuckets] = useState<AllocationBucket[]>([]);
   const [pendingPayments, setPendingPayments] = useState<FixedExpense[]>([]);
-  const [previousMonthBalance, setPreviousMonthBalance] = useState<
+  const [carriedBalance, setCarriedBalance] = useState<
     number | null
   >(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -123,7 +115,7 @@ export function DashboardOverview() {
   );
 
   const balance = monthlyIncome - monthlyExpense;
-  const availableBalance = (previousMonthBalance ?? 0) + balance;
+  const availableBalance = (carriedBalance ?? 0) + balance;
   const today = getTodayDateInput();
 
   const categoryBucketById = useMemo(() => {
@@ -261,16 +253,6 @@ export function DashboardOverview() {
   const currentMonthName = new Intl.DateTimeFormat("es-MX", {
     month: "long",
   }).format(new Date(`${currentMonthKey}-01T00:00:00`));
-  const currentMonthDate = new Date(`${currentMonthKey}-01T00:00:00`);
-  const previousMonthName = new Intl.DateTimeFormat("es-MX", {
-    month: "long",
-  }).format(
-    new Date(
-      currentMonthDate.getFullYear(),
-      currentMonthDate.getMonth() - 1,
-      1,
-    ),
-  );
   const currentMonthPendingPayments = useMemo(() => {
     return pendingPayments.filter((payment) =>
       payment.due_date.startsWith(currentMonthKey),
@@ -379,7 +361,6 @@ export function DashboardOverview() {
   useEffect(() => {
     async function loadDashboard() {
       const { start, end } = getCurrentMonthRange();
-      const previousMonthRange = getPreviousMonthRange();
 
       const [
         incomesResult,
@@ -415,13 +396,13 @@ export function DashboardOverview() {
         supabase
           .from("incomes")
           .select("amount")
-          .gte("income_date", previousMonthRange.start)
-          .lte("income_date", previousMonthRange.end),
+          .gte("income_date", BALANCE_TRACKING_START)
+          .lt("income_date", start),
         supabase
           .from("expenses")
           .select("amount")
-          .gte("expense_date", previousMonthRange.start)
-          .lte("expense_date", previousMonthRange.end),
+          .gte("expense_date", BALANCE_TRACKING_START)
+          .lt("expense_date", start),
       ]);
 
       if (!incomesResult.error) {
@@ -476,7 +457,7 @@ export function DashboardOverview() {
           0,
         );
 
-        setPreviousMonthBalance(previousIncomeTotal - previousExpenseTotal);
+        setCarriedBalance(previousIncomeTotal - previousExpenseTotal);
       }
 
       setIsLoading(false);
@@ -513,17 +494,17 @@ export function DashboardOverview() {
     {
       label: "Saldo disponible",
       value:
-        isLoading || previousMonthBalance === null
+        isLoading || carriedBalance === null
           ? "--"
           : formatCurrency(availableBalance),
       helper: isLoading
         ? "Cargando balance anterior..."
-        : previousMonthBalance === null
+        : carriedBalance === null
           ? "No se pudo calcular el mes anterior"
-          : `Balance de ${previousMonthName}: ${formatCurrency(previousMonthBalance)}`,
+          : `${formatCurrency(carriedBalance)} anteriores + ${formatCurrency(balance)} de ${currentMonthName}`,
       icon: PiggyBank,
       featured: true,
-      warning: previousMonthBalance !== null && availableBalance < 0,
+      warning: carriedBalance !== null && availableBalance < 0,
     },
     {
       label: `Pendientes de ${currentMonthName}`,
