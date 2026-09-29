@@ -16,6 +16,14 @@ import {
 } from "lucide-react";
 import { BrandedSectionHeading } from "@/components/app/branded-section-heading";
 import {
+  calculateFreeAvailable,
+  calculateGeneralAvailableBalance,
+  calculateMonthlyBalance,
+  calculateReservedMoney,
+  getReserveBreakdown,
+  isReserveBucket,
+} from "@/lib/dashboard-balances";
+import {
   formatCurrency,
   formatDate,
   formatDateInput,
@@ -56,6 +64,20 @@ type FixedExpense = {
   due_date: string;
   id: string;
   status: "pending" | "paid";
+};
+
+type DashboardLoadErrors = {
+  finances: boolean;
+  pending: boolean;
+  previousBalance: boolean;
+  reserves: boolean;
+};
+
+const EMPTY_LOAD_ERRORS: DashboardLoadErrors = {
+  finances: false,
+  pending: false,
+  previousBalance: false,
+  reserves: false,
 };
 
 const BALANCE_TRACKING_START = "2026-07-01";
@@ -102,6 +124,8 @@ export function DashboardOverview() {
   const [carriedBalance, setCarriedBalance] = useState<
     number | null
   >(null);
+  const [loadErrors, setLoadErrors] =
+    useState<DashboardLoadErrors>(EMPTY_LOAD_ERRORS);
   const [isLoading, setIsLoading] = useState(true);
 
   const monthlyIncome = useMemo(
@@ -114,8 +138,11 @@ export function DashboardOverview() {
     [expenses],
   );
 
-  const balance = monthlyIncome - monthlyExpense;
-  const availableBalance = (carriedBalance ?? 0) + balance;
+  const balance = calculateMonthlyBalance(monthlyIncome, monthlyExpense);
+  const availableBalance = calculateGeneralAvailableBalance(
+    carriedBalance ?? 0,
+    balance,
+  );
   const today = getTodayDateInput();
 
   const categoryBucketById = useMemo(() => {
@@ -172,6 +199,20 @@ export function DashboardOverview() {
       };
     });
   }, [buckets, monthlyIncome, spentByBucketId]);
+
+  const reserveBreakdown = useMemo(
+    () => getReserveBreakdown(bucketSummaries),
+    [bucketSummaries],
+  );
+  const reservedMoney = useMemo(
+    () => calculateReservedMoney(bucketSummaries),
+    [bucketSummaries],
+  );
+  const freeAvailable = calculateFreeAvailable(availableBalance, reservedMoney);
+  const hasReserveBuckets = buckets.some((bucket) =>
+    isReserveBucket(bucket.name),
+  );
+  const hasAnyLoadError = Object.values(loadErrors).some(Boolean);
 
   const bestExpenseCategory = useMemo(() => {
     const totals = new Map<
@@ -253,36 +294,30 @@ export function DashboardOverview() {
   const currentMonthName = new Intl.DateTimeFormat("es-MX", {
     month: "long",
   }).format(new Date(`${currentMonthKey}-01T00:00:00`));
-  const currentMonthPendingPayments = useMemo(() => {
-    return pendingPayments.filter((payment) =>
-      payment.due_date.startsWith(currentMonthKey),
-    );
-  }, [currentMonthKey, pendingPayments]);
-  const currentMonthPendingTotal = useMemo(() => {
-    return currentMonthPendingPayments.reduce(
-      (sum, payment) => sum + Number(payment.amount),
-      0,
-    );
-  }, [currentMonthPendingPayments]);
+  const currentMonthPendingPayments = pendingPayments.filter((payment) =>
+    payment.due_date.startsWith(currentMonthKey),
+  );
+  const currentMonthPendingTotal = currentMonthPendingPayments.reduce(
+    (sum, payment) => sum + Number(payment.amount),
+    0,
+  );
 
-  const pendingPaymentSummary = useMemo(() => {
-    return pendingPayments.reduce(
-      (result, payment) => {
-        const days = getDayDifference(payment.due_date, today);
+  const pendingPaymentSummary = pendingPayments.reduce(
+    (result, payment) => {
+      const days = getDayDifference(payment.due_date, today);
 
-        if (days < 0) {
-          result.overdue += 1;
-        } else if (days <= 3) {
-          result.upcoming += 1;
-        }
+      if (days < 0) {
+        result.overdue += 1;
+      } else if (days <= 3) {
+        result.upcoming += 1;
+      }
 
-        return result;
-      },
-      { overdue: 0, upcoming: 0 },
-    );
-  }, [pendingPayments, today]);
+      return result;
+    },
+    { overdue: 0, upcoming: 0 },
+  );
 
-  const dashboardAlerts = useMemo(() => {
+  const dashboardAlerts = (() => {
     const alerts: Array<{
       description: string;
       href?: string;
@@ -350,17 +385,14 @@ export function DashboardOverview() {
     }
 
     return alerts.slice(0, 4);
-  }, [
-    balance,
-    mostAvailableBucket,
-    overBudgetBuckets,
-    pendingPaymentSummary.overdue,
-    pendingPaymentSummary.upcoming,
-  ]);
+  })();
 
   useEffect(() => {
     async function loadDashboard() {
       const { start, end } = getCurrentMonthRange();
+
+      setIsLoading(true);
+      setLoadErrors(EMPTY_LOAD_ERRORS);
 
       const [
         incomesResult,
@@ -458,7 +490,18 @@ export function DashboardOverview() {
         );
 
         setCarriedBalance(previousIncomeTotal - previousExpenseTotal);
+      } else {
+        setCarriedBalance(null);
       }
+
+      setLoadErrors({
+        finances: Boolean(incomesResult.error || expensesResult.error),
+        pending: Boolean(pendingPaymentsResult.error),
+        previousBalance: Boolean(
+          previousIncomesResult.error || previousExpensesResult.error,
+        ),
+        reserves: Boolean(categoriesResult.error || bucketsResult.error),
+      });
 
       setIsLoading(false);
     }
@@ -466,51 +509,113 @@ export function DashboardOverview() {
     loadDashboard();
   }, []);
 
+  const financesUnavailable = isLoading || loadErrors.finances;
+  const generalBalanceUnavailable =
+    financesUnavailable || loadErrors.previousBalance || carriedBalance === null;
+  const reservesUnavailable = financesUnavailable || loadErrors.reserves;
+  const freeAvailableUnavailable =
+    generalBalanceUnavailable || reservesUnavailable;
+  const showReserveStats =
+    isLoading || loadErrors.reserves || hasReserveBuckets;
+
   const stats = [
     {
       label: "Ingresos del mes",
-      value: formatCurrency(monthlyIncome),
-      helper: isLoading ? "Cargando..." : `${incomes.length} registros`,
+      value: financesUnavailable ? "--" : formatCurrency(monthlyIncome),
+      helper: isLoading
+        ? "Cargando..."
+        : loadErrors.finances
+          ? "No se pudieron cargar los ingresos"
+          : `${incomes.length} registros`,
       href: "/ingresos",
       icon: ArrowUpRight,
       tone: "income",
     },
     {
       label: "Gastos del mes",
-      value: formatCurrency(monthlyExpense),
-      helper: isLoading ? "Cargando..." : `${expenses.length} registros`,
+      value: financesUnavailable ? "--" : formatCurrency(monthlyExpense),
+      helper: isLoading
+        ? "Cargando..."
+        : loadErrors.finances
+          ? "No se pudieron cargar los gastos"
+          : `${expenses.length} registros`,
       href: "/gastos",
       icon: ArrowDownRight,
       tone: "expense",
     },
     {
       label: "Balance del mes",
-      value: formatCurrency(balance),
-      helper:
-        balance >= 0 ? "Movimiento neto del mes" : "Gasto mayor al ingreso",
+      value: financesUnavailable ? "--" : formatCurrency(balance),
+      helper: isLoading
+        ? "Cargando..."
+        : loadErrors.finances
+          ? "No se pudo calcular el balance"
+          : balance >= 0
+            ? "Movimiento neto del mes"
+            : "Gasto mayor al ingreso",
       icon: Wallet,
-      warning: balance < 0,
+      warning: !financesUnavailable && balance < 0,
     },
     {
-      label: "Saldo disponible",
-      value:
-        isLoading || carriedBalance === null
-          ? "--"
-          : formatCurrency(availableBalance),
+      label: "Saldo disponible general",
+      value: generalBalanceUnavailable ? "--" : formatCurrency(availableBalance),
       helper: isLoading
         ? "Cargando balance anterior..."
-        : carriedBalance === null
-          ? "No se pudo calcular el mes anterior"
+        : loadErrors.finances || loadErrors.previousBalance || carriedBalance === null
+          ? "No se pudo calcular el saldo acumulado"
           : `${formatCurrency(carriedBalance)} anteriores + ${formatCurrency(balance)} de ${currentMonthName}`,
       icon: PiggyBank,
       featured: true,
-      warning: carriedBalance !== null && availableBalance < 0,
+      warning: !generalBalanceUnavailable && availableBalance < 0,
     },
+    ...(showReserveStats
+      ? [
+          {
+            label: "Dinero reservado",
+            value: reservesUnavailable ? "--" : formatCurrency(reservedMoney),
+            helper: isLoading
+              ? "Cargando reservas..."
+              : loadErrors.reserves
+                ? "No se pudieron calcular las reservas"
+                : reserveBreakdown.length > 0
+                  ? reserveBreakdown
+                      .map(
+                        (bucket) =>
+                          `${normalizeSpanishLabel(bucket.name)}: ${formatCurrency(bucket.availableAmount)}`,
+                      )
+                      .join(" · ")
+                  : "No hay bolsas de reserva configuradas",
+            icon: PiggyBank,
+            tone: "reserved",
+          },
+          {
+            label: "Disponible libre",
+            value: freeAvailableUnavailable
+              ? "--"
+              : formatCurrency(freeAvailable),
+            helper: isLoading
+              ? "Calculando dinero libre..."
+              : freeAvailableUnavailable
+                ? "No se pudo calcular el disponible libre"
+                : freeAvailable >= 0
+                  ? "Disponible después de descontar el dinero reservado"
+                  : "Las reservas superan el saldo disponible",
+            icon: CircleDollarSign,
+            featured: freeAvailable >= 0,
+            warning: !freeAvailableUnavailable && freeAvailable < 0,
+          },
+        ]
+      : []),
     {
       label: `Pendientes de ${currentMonthName}`,
-      value: formatCurrency(currentMonthPendingTotal),
+      value:
+        isLoading || loadErrors.pending
+          ? "--"
+          : formatCurrency(currentMonthPendingTotal),
       helper: isLoading
         ? "Cargando..."
+        : loadErrors.pending
+          ? "No se pudieron cargar los pendientes"
         : currentMonthPendingPayments.length > 0
           ? `${currentMonthPendingPayments.length} por pagar este mes`
           : "Mes cubierto",
@@ -520,9 +625,14 @@ export function DashboardOverview() {
     },
     {
       label: "Pendientes totales",
-      value: formatCurrency(pendingPaymentTotal),
+      value:
+        isLoading || loadErrors.pending
+          ? "--"
+          : formatCurrency(pendingPaymentTotal),
       helper: isLoading
         ? "Cargando..."
+        : loadErrors.pending
+          ? "No se pudieron cargar los pendientes"
         : pendingPaymentSummary.overdue > 0
           ? `${pendingPaymentSummary.overdue} vencidos`
           : pendingPaymentSummary.upcoming > 0
@@ -530,12 +640,28 @@ export function DashboardOverview() {
             : `${pendingPayments.length} por pagar`,
       href: "/pendientes",
       icon: CalendarClock,
-      warning: pendingPaymentSummary.overdue > 0,
+      warning: !loadErrors.pending && pendingPaymentSummary.overdue > 0,
     },
   ];
 
   return (
     <>
+      {hasAnyLoadError && !isLoading ? (
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-2xl border border-red-400/25 bg-red-500/10 p-4 text-red-50"
+        >
+          <CircleAlert className="mt-0.5 h-5 w-5 shrink-0" />
+          <div>
+            <p className="font-semibold">Algunos datos no se pudieron cargar</p>
+            <p className="mt-1 text-sm text-red-100/80">
+              Los valores afectados se muestran como --. Recarga la página para
+              intentarlo nuevamente.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {stats.map((stat) => {
           const Icon = stat.icon;
@@ -550,6 +676,8 @@ export function DashboardOverview() {
                     ? "border-red-300 bg-red-50"
                     : stat.tone === "pending"
                       ? "border-yellow-300/40 bg-yellow-300/10"
+                    : stat.tone === "reserved"
+                      ? "border-sky-300/30 bg-sky-300/10"
                     : stat.warning
                       ? "border-red-400/25 bg-red-500/10"
                       : stat.featured
@@ -567,6 +695,8 @@ export function DashboardOverview() {
                           ? "text-red-800"
                           : stat.tone === "pending"
                             ? "text-yellow-100"
+                          : stat.tone === "reserved"
+                            ? "text-sky-100"
                         : stat.warning
                           ? "text-red-100"
                           : stat.featured
@@ -584,6 +714,8 @@ export function DashboardOverview() {
                           ? "text-red-900"
                           : stat.tone === "pending"
                             ? "text-yellow-100"
+                          : stat.tone === "reserved"
+                            ? "text-sky-100"
                         : stat.warning
                           ? "text-red-100"
                           : stat.featured
@@ -605,6 +737,8 @@ export function DashboardOverview() {
                           ? "border-red-300 bg-white text-red-800"
                           : stat.tone === "pending"
                             ? "border-yellow-300/40 bg-yellow-300/10 text-yellow-100"
+                          : stat.tone === "reserved"
+                            ? "border-sky-300/30 bg-sky-300/10 text-sky-100"
                         : stat.warning
                           ? "border-red-400/25 bg-red-500/10 text-red-100"
                           : stat.featured
@@ -623,6 +757,8 @@ export function DashboardOverview() {
                           ? "border-red-300 bg-white text-red-800"
                           : stat.tone === "pending"
                             ? "border-yellow-300/40 bg-yellow-300/10 text-yellow-100"
+                          : stat.tone === "reserved"
+                            ? "border-sky-300/30 bg-sky-300/10 text-sky-100"
                         : stat.warning
                           ? "border-red-400/25 bg-red-500/10 text-red-100"
                           : stat.featured
