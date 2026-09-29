@@ -27,28 +27,40 @@ test("conserva el saldo acumulado anterior y suma el balance actual", () => {
   );
 });
 
-test("reconoce Ahorro y Operación del negocio aunque tengan acentos", () => {
-  assert.equal(isReserveBucket("Ahorro"), true);
+test("reserva únicamente Operación del negocio aunque tenga acentos", () => {
+  assert.equal(isReserveBucket("Ahorro"), false);
   assert.equal(isReserveBucket("Operación del negocio"), true);
   assert.equal(isReserveBucket("Gastos personales"), false);
 });
 
-test("suma únicamente saldos positivos de las reservas", () => {
+test("suma únicamente el saldo positivo de Operación del negocio", () => {
   const buckets = [
     { id: "ahorro", name: "Ahorro", remainingAmount: 1_200 },
     {
       id: "operacion",
       name: "Operación del negocio",
-      remainingAmount: -350,
+      remainingAmount: 350,
     },
     { id: "personales", name: "Gastos personales", remainingAmount: 700 },
   ];
 
-  assert.equal(calculateReservedMoney(buckets), 1_200);
+  assert.equal(calculateReservedMoney(buckets), 350);
   assert.deepEqual(
     getReserveBreakdown(buckets).map((bucket) => bucket.availableAmount),
-    [1_200, 0],
+    [350],
   );
+});
+
+test("una reserva de Operación negativa no aumenta el dinero libre", () => {
+  const buckets = [
+    {
+      id: "operacion",
+      name: "Operacion del negocio",
+      remainingAmount: -350,
+    },
+  ];
+
+  assert.equal(calculateReservedMoney(buckets), 0);
 });
 
 test("calcula el disponible libre sin tocar el saldo general", () => {

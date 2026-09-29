@@ -4,7 +4,7 @@ export type ReserveBucketBalance = {
   remainingAmount: number;
 };
 
-const RESERVED_BUCKET_NAMES = new Set(["ahorro", "operacion del negocio"]);
+const RESERVED_BUCKET_NAMES = new Set(["operacion del negocio"]);
 
 function normalizeBucketName(name: string) {
   return name

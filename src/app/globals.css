@@ -106,6 +106,21 @@ input {
   color: #9a6700 !important;
 }
 
+.finance-light [class*="text-sky-50"],
+.finance-light [class*="text-sky-100"],
+.finance-light [class*="text-sky-200"],
+.finance-light [class*="text-sky-300"] {
+  color: #075985 !important;
+}
+
+.finance-light [class*="bg-sky-300"] {
+  background-color: #e0f2fe !important;
+}
+
+.finance-light [class*="border-sky-300"] {
+  border-color: #38bdf8 !important;
+}
+
 .finance-light input,
 .finance-light select,
 .finance-light textarea {
